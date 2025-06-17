@@ -1,6 +1,6 @@
 
 import Link from 'next/link';
-import { getAllClientIds, getClientData, ClientConfig } from '@/lib/client-data';
+import { getAllClientIds, getClientData, ClientConfig, getCanonicalClientUrl } from '@/lib/client-data';
 
 export function Header() {
   const clientIds = getAllClientIds();
@@ -13,15 +13,20 @@ export function Header() {
           Tracc
         </Link>
         <nav className="space-x-4">
-          {clients.map(client => (
-            <Link 
-              key={client.id} 
-              href={`/${client.id}`} 
-              className="text-foreground hover:text-primary transition-colors"
-            >
-              {client.name}
-            </Link>
-          ))}
+          {clients.map(client => {
+            const clientSubdomainUrl = getCanonicalClientUrl(client.id, '/');
+            return (
+              <Link 
+                key={client.id} 
+                href={clientSubdomainUrl} 
+                className="text-foreground hover:text-primary transition-colors"
+                target="_blank" // Open client sites in new tab from header
+                rel="noopener noreferrer"
+              >
+                {client.name}
+              </Link>
+            );
+          })}
         </nav>
       </div>
     </header>

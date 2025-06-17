@@ -1,3 +1,4 @@
+
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { Button } from '@/components/ui/button';
@@ -25,7 +26,7 @@ export async function generateMetadata({ params }: ClientPageProps): Promise<Met
     };
   }
   
-  const canonicalUrl = getCanonicalClientUrl(client.id, '/'); // Base path for the client
+  const canonicalUrl = getCanonicalClientUrl(client.id, '/');
   
   return {
     title: `${client.name} - Demo Site`,
@@ -43,7 +44,8 @@ export default function ClientPage({ params }: ClientPageProps) {
     notFound();
   }
   
-  const clientHost = `${client.subdomain}.${process.env.NODE_ENV === 'production' ? process.env.NEXT_PUBLIC_ROOT_DOMAIN || 'tracc.com' : 'localhost:9002'}`;
+  const clientHost = getCanonicalClientUrl(client.id, '/').replace(/^https?:\/\//, '').replace(/\/$/, '');
+
 
   return (
     <div className="flex flex-col items-center space-y-10 py-8">
@@ -51,10 +53,7 @@ export default function ClientPage({ params }: ClientPageProps) {
         <h1 className="text-4xl md:text-5xl font-bold font-headline text-primary">{client.name}'s Demo Site</h1>
         <p className="text-lg text-muted-foreground leading-relaxed">
           Welcome to the demonstration page for {client.name}. This illustrates how a client's site
-          would be structured within Tracc, showcasing content and branding.
-        </p>
-        <p className="text-sm text-muted-foreground">
-          (In a production environment, this might be accessed via <code>{clientHost}</code>)
+          would be structured within Tracc, showcasing content and branding, accessed via <code>{clientHost}</code>.
         </p>
       </div>
 
