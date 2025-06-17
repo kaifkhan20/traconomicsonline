@@ -1,13 +1,17 @@
+
 import { getAllClientIds, getCanonicalClientUrl } from '@/lib/client-data';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const protocol = request.headers.get('x-forwarded-proto') || (process.env.NODE_ENV === "production" ? "https" : "http");
-  const host = request.headers.get('host') || (
-    process.env.NODE_ENV === 'production' 
-    ? process.env.NEXT_PUBLIC_ROOT_DOMAIN || 'tracc.com' 
-    : 'localhost:9002'
-  );
+
+  let host = request.headers.get('host');
+  if (process.env.NODE_ENV === 'production') {
+    host = process.env.NEXT_PUBLIC_ROOT_DOMAIN || process.env.VERCEL_URL || request.headers.get('host');
+  } else {
+    host = request.headers.get('host') || 'localhost:9002';
+  }
+  
   const rootUrl = `${protocol}://${host}`;
 
   const clientIds = getAllClientIds();
@@ -18,6 +22,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     <loc>${rootUrl}/main-sitemap.xml</loc>
   </sitemap>
   ${clientIds.map(id => {
+    // getCanonicalClientUrl will correctly use NEXT_PUBLIC_ROOT_DOMAIN (or VERCEL_URL fallback via its internal logic)
+    // to generate path-based URLs if on a .vercel.app domain.
     const clientSitemapUrl = getCanonicalClientUrl(id, '/sitemap.xml');
     return `<sitemap><loc>${clientSitemapUrl}</loc></sitemap>`;
   }).join('')}

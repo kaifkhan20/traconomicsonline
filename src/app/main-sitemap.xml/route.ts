@@ -1,12 +1,19 @@
+
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const protocol = request.headers.get('x-forwarded-proto') || (process.env.NODE_ENV === "production" ? "https" : "http");
-   const host = request.headers.get('host') || (
-    process.env.NODE_ENV === 'production' 
-    ? process.env.NEXT_PUBLIC_ROOT_DOMAIN || 'tracc.com' 
-    : 'localhost:9002'
-  );
+  
+  let host = request.headers.get('host');
+  if (process.env.NODE_ENV === 'production') {
+    // Prefer NEXT_PUBLIC_ROOT_DOMAIN, then VERCEL_URL (which is just hostname), then actual host
+    host = process.env.NEXT_PUBLIC_ROOT_DOMAIN || process.env.VERCEL_URL || request.headers.get('host');
+  } else {
+    host = request.headers.get('host') || 'localhost:9002';
+  }
+  // If VERCEL_URL or NEXT_PUBLIC_ROOT_DOMAIN is just a hostname without port, and we expect one (e.g. localhost:9002), this is fine.
+  // For production, host should be the domain like traconomicsonline.vercel.app or a custom domain.
+
   const baseUrl = `${protocol}://${host}`;
 
   // Define main site pages here
