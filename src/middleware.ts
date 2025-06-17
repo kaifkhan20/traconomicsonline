@@ -1,8 +1,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
+import { getClientData, getCanonicalClientUrl, getAllClientIds } from './lib/client-data';
 
-// Add your client subdomains here (lowercase)
-const KNOWN_CLIENT_SUBDOMAINS = ['clienta', 'clientb']; 
+// Dynamically get known client IDs to be used as subdomains or first path segments
+const KNOWN_CLIENT_IDS = getAllClientIds();
 
 export const config = {
   matcher: [
@@ -18,49 +19,50 @@ export const config = {
 };
 
 export default function middleware(req: NextRequest) {
-  const url = req.nextUrl.clone(); // Use clone to modify
+  const url = req.nextUrl.clone();
   const { pathname } = url;
-
   const hostname = req.headers.get('host') || '';
 
   let rootDomain = 'localhost:9002'; // Default for local
   if (process.env.NODE_ENV === 'production') {
-    // In production, prioritize NEXT_PUBLIC_ROOT_DOMAIN, then VERCEL_URL, then the actual host as a last resort.
-    // VERCEL_URL is typically the <project-name>.vercel.app hostname.
+    // In production, prioritize NEXT_PUBLIC_ROOT_DOMAIN, then VERCEL_URL, then the actual host.
     rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN || process.env.VERCEL_URL || hostname;
   }
 
-
   // Extract potential subdomain
-  // e.g. clienta from clienta.customdomain.com or clienta.traconomicsonline.com
   let currentSubdomain = '';
   if (hostname !== rootDomain && hostname.endsWith(`.${rootDomain}`)) {
-    // This condition correctly handles custom domains.
-    // For Vercel default domains (e.g. traconomicsonline.vercel.app), hostname will be equal to rootDomain
-    // (if NEXT_PUBLIC_ROOT_DOMAIN or VERCEL_URL is set to traconomicsonline.vercel.app),
-    // so currentSubdomain will remain empty, which is correct as we don't do subdomain rewrites for the default Vercel domain.
     currentSubdomain = hostname.split('.')[0].toLowerCase();
-  } else if (process.env.NODE_ENV !== 'production' && !hostname.includes('.') && KNOWN_CLIENT_SUBDOMAINS.includes(hostname.toLowerCase())) {
-    // Handle development case where hostname might be 'clienta' (from /etc/hosts)
-    // and rootDomain is 'localhost:9002'
-     currentSubdomain = hostname.toLowerCase();
+  } else if (process.env.NODE_ENV !== 'production' && !hostname.includes('.') && KNOWN_CLIENT_IDS.includes(hostname.toLowerCase())) {
+    currentSubdomain = hostname.toLowerCase();
   }
-  
+
   const firstPathSegment = pathname.split('/')[1]?.toLowerCase() || '';
 
-  // If a known client subdomain is detected (primarily for custom domains)
-  if (currentSubdomain && KNOWN_CLIENT_SUBDOMAINS.includes(currentSubdomain)) {
-    // And the path doesn't already start with that client's ID
+  // Case 1: Request is to a known client subdomain (e.g., clienta.yourcustomdomain.com)
+  if (currentSubdomain && KNOWN_CLIENT_IDS.includes(currentSubdomain)) {
+    // Rewrite to /<clientSubdomain>/<originalPath> if not already structured like that
+    // This allows Next.js to serve from /app/[clientId]/...
     if (firstPathSegment !== currentSubdomain) {
-      // Rewrite to /<clientSubdomain>/<originalPath>
-      // e.g., clienta.customdomain.com/about -> customdomain.com/clienta/about (internally)
       url.pathname = `/${currentSubdomain}${pathname === '/' ? '' : pathname}`;
       return NextResponse.rewrite(url);
     }
+    // If path already starts with /<clientSubdomain>, let it pass (it's correctly structured or an asset)
+    return NextResponse.next();
   }
 
-  // If accessed via /clientA/* or /clientB/*, these are handled by app/[clientId]/...
-  // No special rewrite needed here, Next.js routing takes over.
+  // Case 2: Request is to the root domain, but path starts with a client ID (e.g., yourcustomdomain.com/clienta)
+  // This is direct path access to a client page. Redirect to the subdomain.
+  if (KNOWN_CLIENT_IDS.includes(firstPathSegment) && hostname === rootDomain) {
+    const client = getClientData(firstPathSegment);
+    if (client) {
+      // Construct the rest of the path after the clientID segment
+      const remainingPath = pathname.substring(firstPathSegment.length + 1); // e.g., /about from /clienta/about
+      const newSubdomainUrl = getCanonicalClientUrl(client.id, remainingPath);
+      return NextResponse.redirect(newSubdomainUrl, 308); // 308 Permanent Redirect
+    }
+  }
 
+  // For any other requests to the root domain that don't match a client path, let them pass
   return NextResponse.next();
 }
