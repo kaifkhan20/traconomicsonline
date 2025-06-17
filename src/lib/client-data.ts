@@ -14,17 +14,7 @@ export interface ClientConfig {
   pages: ClientPageInfo[];
 }
 
-// Ensure NEXT_PUBLIC_ROOT_DOMAIN is set in your environment for production
-const rootDomain = process.env.NODE_ENV === 'production' 
-  ? process.env.NEXT_PUBLIC_ROOT_DOMAIN || 'tracc.com' 
-  : 'localhost:9002';
-
-const getClientBaseUrl = (subdomain: string, protocol: string = 'https') => {
-   const effectiveProtocol = process.env.NODE_ENV === 'production' ? 'https' : 'http';
-   return `${effectiveProtocol}://${subdomain}.${rootDomain}`;
-};
-
-export const clients: Record<string, ClientConfig> = {
+const clients: Record<string, ClientConfig> = {
   clienta: {
     id: 'clienta',
     name: 'Alpha Corp (Client A)',
@@ -59,13 +49,40 @@ export function getAllClientIds(): string[] {
   return Object.keys(clients);
 }
 
+const defaultVercelHostnamePattern = /\.(vercel\.app|now\.sh)$/; // Matches .vercel.app and legacy .now.sh
+
 export function getCanonicalClientUrl(clientId: string, path: string = ''): string {
   const client = getClientData(clientId);
   if (!client) throw new Error(`Client ${clientId} not found for canonical URL`);
-  
+
   const protocol = process.env.NODE_ENV === 'production' ? 'https' : 'http';
-  const basePath = `${protocol}://${client.subdomain}.${rootDomain}`;
   
+  // Determine the effective root domain. Use VERCEL_URL as a fallback if NEXT_PUBLIC_ROOT_DOMAIN isn't explicitly set on Vercel.
+  let effectiveRootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN || (process.env.VERCEL_URL || 'localhost:9002');
+  if (process.env.VERCEL_URL && !process.env.NEXT_PUBLIC_ROOT_DOMAIN) {
+    // VERCEL_URL doesn't include protocol, NEXT_PUBLIC_ROOT_DOMAIN should be just the hostname
+    effectiveRootDomain = process.env.VERCEL_URL;
+  }
+
+
   const normalizedPath = path === '/' ? '' : (path.startsWith('/') ? path : `/${path}`);
-  return `${basePath}${normalizedPath}`;
+
+  // Check if a custom domain is configured (i.e., not a Vercel default domain and not localhost)
+  const isCustomDomain = effectiveRootDomain && 
+                         !defaultVercelHostnamePattern.test(effectiveRootDomain) && 
+                         !effectiveRootDomain.includes('localhost');
+
+  if (process.env.NODE_ENV === 'production' && isCustomDomain) {
+    // For production with a custom domain, use the subdomain format
+    return `${protocol}://${client.subdomain}.${effectiveRootDomain}${normalizedPath}`;
+  } else {
+    // For local dev, or if using a .vercel.app domain, or if NEXT_PUBLIC_ROOT_DOMAIN is not a custom TLD,
+    // construct a path-based URL.
+    // The base for this path-based URL is the effectiveRootDomain.
+    let baseAppUrl = effectiveRootDomain;
+    if (!baseAppUrl.startsWith('http')) {
+      baseAppUrl = `${protocol}://${baseAppUrl}`;
+    }
+    return `${baseAppUrl}/${client.id}${normalizedPath === '/' ? '' : normalizedPath}`;
+  }
 }
